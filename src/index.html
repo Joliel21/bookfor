@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0A6E78" />
+    <link rel="preload" href="https://raw.githubusercontent.com/Joliel21/rare_revolution_magazine_2026/main/assets/images/transparent-artwork/magazine-source/public/background/rare-ocean-water.png" as="image" />
+    <link rel="preload" href="https://raw.githubusercontent.com/Joliel21/rare_revolution_magazine_2026/main/assets/media/video/documents/video/rare-wave-intro.mp4" as="video" type="video/mp4" />
+    <style>html,body,#root{margin:0;min-height:100%;background:#0A6E78}</style>
+    <title>RARE Revolution Magazine</title>
+  
+  <style id="rrm-back-cover-cleanup">
+    img[alt="RARE Revolution back cover"] ~ * {
+      display: none !important;
+    }
+    img[alt="RARE Revolution back cover"] {
+      position: absolute !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: contain !important;
+      background: transparent !important;
+      z-index: 999 !important;
+    }
+  </style>
+  <script id="rrm-eager-page-preload">
+    (() => {
+      const preloadImage = (url) => {
+        if (!url || document.querySelector(`link[data-rrm-preload="${CSS.escape(url)}"]`)) return;
+        const link = document.createElement("link");
+        link.rel = "preload";
+        link.as = "image";
+        link.href = url;
+        link.dataset.rrmPreload = url;
+        document.head.appendChild(link);
+        const image = new Image();
+        image.decoding = "async";
+        image.src = url;
+      };
+
+      const preloadIssue = async () => {
+        try {
+          const [pagesResponse, manifestResponse] = await Promise.all([
+            fetch(".https://raw.githubusercontent.com/Joliel21/rare_revolution_magazine_2026/main/assets/data/magazine-source/public/content/front-matter.json", { cache: "force-cache" }),
+            fetch("./content/magazine-manifest.json", { cache: "force-cache" }),
+          ]);
+
+          const pagesPayload = await pagesResponse.json();
+          const manifestPayload = await manifestResponse.json();
+
+          const urls = new Set();
+          (pagesPayload.pages || []).forEach((page) => {
+            if (page && page.imageUrl) urls.add(page.imageUrl);
+          });
+
+          const readerContext = manifestPayload.readerContext || {};
+          if (readerContext.cover && readerContext.cover.imageUrl) {
+            urls.add(readerContext.cover.imageUrl);
+          }
+          if (readerContext.backCover && readerContext.backCover.imageUrl) {
+            urls.add(readerContext.backCover.imageUrl);
+          }
+
+          urls.forEach(preloadImage);
+        } catch (error) {
+          console.warn("Magazine image preload failed:", error);
+        }
+      };
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", preloadIssue, { once: true });
+      } else {
+        preloadIssue();
+      }
+    })();
+  </script>
+
+</head>
+  <body>
+    <noscript>RARE Revolution Magazine requires JavaScript to display the interactive reader.</noscript>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script src="./logo-hotspots.js"></script>
+    <script src="./front-spread-hotspots.js"></script>
+</body>
+</html>
