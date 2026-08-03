@@ -1,0 +1,55 @@
+name: Build magazine automatically
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "dist/**"
+      - "the-words-we-carry/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bookfor-auto-build-main
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Build browser and WordPress outputs
+        run: npm run build:all
+
+      - name: Commit rebuilt files
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A dist the-words-we-carry
+
+          if git diff --cached --quiet; then
+            echo "Build completed; generated files did not change."
+            exit 0
+          fi
+
+          git commit -m "build: update generated magazine files [skip ci]"
+          git push origin HEAD:main
