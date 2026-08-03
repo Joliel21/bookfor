@@ -218,6 +218,62 @@ const sendMagazineAnalyticsEvent = (event: Record<string, unknown>) => {
   }).catch(() => undefined);
 };
 
+type JsonFetchOptions = {
+  label: string;
+  fallback?: unknown;
+  required?: boolean;
+};
+
+const fetchJsonSafely = async <T,>(
+  url: string,
+  options: JsonFetchOptions,
+): Promise<T> => {
+  const { label, fallback, required = true } = options;
+
+  if (!url) {
+    if (!required) return fallback as T;
+    throw new Error(`${label} URL is empty`);
+  }
+
+  const response = await fetch(url, {
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  });
+
+  if (!response.ok) {
+    if (!required) return fallback as T;
+    throw new Error(
+      `${label} returned HTTP ${response.status} from ${url}`,
+    );
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+  const rawText = await response.text();
+  const trimmed = rawText.trimStart();
+
+  if (
+    trimmed.startsWith("<") ||
+    (!contentType.toLowerCase().includes("json") &&
+      /<!doctype|<html/i.test(trimmed.slice(0, 200)))
+  ) {
+    throw new Error(
+      `${label} returned HTML instead of JSON from ${url}`,
+    );
+  }
+
+  try {
+    return JSON.parse(rawText) as T;
+  } catch (parseError) {
+    throw new Error(
+      `${label} returned invalid JSON from ${url}: ${
+        parseError instanceof Error
+          ? parseError.message
+          : String(parseError)
+      }`,
+    );
+  }
+};
+
 const getCandidateItemsFromContentPayload = (payload: any) => {
   if (!payload) return [];
   if (Array.isArray(payload)) return payload;
@@ -233,12 +289,9 @@ const fetchWordPressMagazinePayload = async (
 ) => {
   if (!url) return null;
 
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`${sourceLabel} returned ${response.status}`);
-  }
-
-  const payload = await response.json();
+  const payload = await fetchJsonSafely<any>(url, {
+    label: sourceLabel,
+  });
   const candidateItems = getCandidateItemsFromContentPayload(payload);
 
   if (candidateItems.length === 0) {
@@ -252,12 +305,9 @@ const fetchActiveAdsPayload = async () => {
   if (!ADS_URL) return null;
 
   try {
-    const response = await fetch(ADS_URL);
-    if (!response.ok) {
-      throw new Error(`Ads endpoint returned ${response.status}`);
-    }
-
-    const payload = await response.json();
+    const payload = await fetchJsonSafely<any>(ADS_URL, {
+      label: "Ads endpoint",
+    });
     const ads = Array.isArray(payload)
       ? payload
       : Array.isArray(payload?.ads)
@@ -1929,30 +1979,29 @@ function App() {
             );
           }
 
-          const [
-            articlesRes,
-            chaptersRes,
-            frontMatterRes,
-            chapterDescriptionsRes,
+          [
+            articlesRaw,
+            chaptersRaw,
+            frontMatterRaw,
+            chapterDescriptionsRaw,
           ] = await Promise.all([
-            fetch(ARTICLES_URL),
-            fetch(CHAPTERS_URL),
-            fetch(FRONT_MATTER_URL),
-            fetch(CHAPTER_DESCRIPTIONS_URL),
+            fetchJsonSafely<any>(ARTICLES_URL, {
+              label: "Articles JSON",
+            }),
+            fetchJsonSafely<any>(CHAPTERS_URL, {
+              label: "Chapters JSON",
+            }),
+            fetchJsonSafely<any>(FRONT_MATTER_URL, {
+              label: "Front matter JSON",
+              required: false,
+              fallback: { pages: [] },
+            }),
+            fetchJsonSafely<any>(CHAPTER_DESCRIPTIONS_URL, {
+              label: "Chapter descriptions JSON",
+              required: false,
+              fallback: {},
+            }),
           ]);
-
-          if (!articlesRes.ok || !chaptersRes.ok) {
-            throw new Error("Failed to fetch from GitHub");
-          }
-
-          articlesRaw = await articlesRes.json();
-          chaptersRaw = await chaptersRes.json();
-          frontMatterRaw = frontMatterRes.ok
-            ? await frontMatterRes.json()
-            : { pages: [] };
-          chapterDescriptionsRaw = chapterDescriptionsRes.ok
-            ? await chapterDescriptionsRes.json()
-            : {};
         }
 
         if (articlesRaw && chaptersRaw) {
@@ -4065,10 +4114,10 @@ ${chapterDescription.body}`,
           newLayoutState[editorialTeamPage87Id] = { blocks: [] };
 
           const importedSpreadImages: Record<number, string> = {
-            88: "https://raw.githubusercontent.com/Joliel21/rare_revolution_magazine_2026/main/assets/images/article-images/magazine-source/public/images/rare-pages/page-90-v37.png",
-            89: "https://raw.githubusercontent.com/Joliel21/rare_revolution_magazine_2026/main/assets/images/article-images/magazine-source/public/images/rare-pages/page-91.png",
-            104: "https://raw.githubusercontent.com/Joliel21/rare_revolution_magazine_2026/main/assets/images/article-images/magazine-source/public/images/rare-pages/page-94-insider-fullbleed-v78.png",
-            105: "https://raw.githubusercontent.com/Joliel21/rare_revolution_magazine_2026/main/assets/images/article-images/magazine-source/public/images/rare-pages/page-95-insider-fullbleed-v78.png",
+            88: "/images/rare-pages/page-90-v37.png",
+            89: "/images/rare-pages/page-91.png",
+            104: "/images/rare-pages/page-94-insider-fullbleed-v78.png",
+            105: "/images/rare-pages/page-95-insider-fullbleed-v78.png",
             106: "/images/rare-pages/page-106-blank.png",
             107: "/images/rare-pages/page-107-blank.png",
           };
@@ -4102,7 +4151,7 @@ ${chapterDescription.body}`,
               id: "explore-series-page-92",
               pageNumber: 90,
               type: "image",
-              imageUrl: "https://raw.githubusercontent.com/Joliel21/rare_revolution_magazine_2026/main/assets/images/two-page-spreads/series-covers/Explore_Series.png",
+              imageUrl: "https://raw.githubusercontent.com/Joliel21/RRM/main/series-cover/Explore_Series.png",
               alt: "Explore the Series — navigation menu",
               hotspots: [
                 {
@@ -4159,7 +4208,7 @@ ${chapterDescription.body}`,
               id: "explore-series-page-93",
               pageNumber: 91,
               type: "image",
-              imageUrl: "https://raw.githubusercontent.com/Joliel21/rare_revolution_magazine_2026/main/assets/images/two-page-spreads/series-covers/Explore_Series.png",
+              imageUrl: "https://raw.githubusercontent.com/Joliel21/RRM/main/series-cover/Explore_Series.png",
               alt: "Explore the Series — connected rare-disease community",
               hotspots: [],
             },
@@ -4171,7 +4220,7 @@ ${chapterDescription.body}`,
               id: "insider-spread-page-92",
               pageNumber: 92,
               type: "image",
-              imageUrl: "https://raw.githubusercontent.com/Joliel21/rare_revolution_magazine_2026/main/assets/images/two-page-spreads/magazine-source/public/images/rare-pages/insider.png",
+              imageUrl: "/images/rare-pages/insider.png",
               alt: "RARE Revolution Insider membership spread",
               hotspots: [],
             },
@@ -4179,7 +4228,7 @@ ${chapterDescription.body}`,
               id: "insider-spread-page-93",
               pageNumber: 93,
               type: "image",
-              imageUrl: "https://raw.githubusercontent.com/Joliel21/rare_revolution_magazine_2026/main/assets/images/two-page-spreads/magazine-source/public/images/rare-pages/insider.png",
+              imageUrl: "/images/rare-pages/insider.png",
               alt: "RARE Revolution Insider membership spread",
               hotspots: [],
             },
@@ -4190,7 +4239,7 @@ finalPages.push(
               id: "insights-spread-page-94",
               pageNumber: 94,
               type: "image",
-              imageUrl: "https://raw.githubusercontent.com/Joliel21/rare_revolution_magazine_2026/main/assets/images/two-page-spreads/series-covers/insights.png",
+              imageUrl: "https://raw.githubusercontent.com/Joliel21/RRM/main/series-cover/insights.png",
               alt: "RARE Revolution Insights spread",
               hotspots: [],
             },
@@ -4198,7 +4247,7 @@ finalPages.push(
               id: "insights-spread-page-95",
               pageNumber: 95,
               type: "image",
-              imageUrl: "https://raw.githubusercontent.com/Joliel21/rare_revolution_magazine_2026/main/assets/images/two-page-spreads/series-covers/insights.png",
+              imageUrl: "https://raw.githubusercontent.com/Joliel21/RRM/main/series-cover/insights.png",
               alt: "RARE Revolution Insights spread",
               hotspots: [],
             },
@@ -5087,7 +5136,7 @@ finalPages.push(
               id: "media-centre-spread-page-197",
               pageNumber: 201,
               type: "image",
-              imageUrl: "https://raw.githubusercontent.com/Joliel21/rare_revolution_magazine_2026/main/spotlight-editions/assets/images/design-spreads/previous-and-spotlight-editions.png",
+              imageUrl: "/images/previous-and-spotlight-editions.png",
               alt: "Previous Editions and Spotlight Editions",
               hotspots: [],
             },
@@ -5491,10 +5540,10 @@ finalPages.push(
   }, []);
 
   const backgroundImage =
-    manifest?.runtime.background || "https://raw.githubusercontent.com/Joliel21/rare_revolution_magazine_2026/main/assets/images/transparent-artwork/magazine-source/public/background/rare-ocean-water.png";
+    manifest?.runtime.background || "/images/background/rare-ocean-water.png";
   const backgroundVideo =
     manifest?.runtime.backgroundVideo ||
-    "https://raw.githubusercontent.com/Joliel21/rare_revolution_magazine_2026/main/assets/media/video/documents/video/rare-wave-intro.mp4";
+    "/images/background/rare-wave-intro.mp4";
 
   // Restart the complete intro on every browser entry into this URL, including
   // normal reloads, typing the URL and pressing Enter, and back-forward cache
@@ -5945,7 +5994,7 @@ finalPages.push(
             }}
           />
           <img
-            src="https://raw.githubusercontent.com/Joliel21/rare_revolution_magazine_2026/main/assets/images/transparent-artwork/magazine-source/public/brand/rrm-intro-overlay.png"
+            src="/images/brand/rrm-intro-overlay.png"
             alt=""
             className="pointer-events-none absolute left-1/2 top-1/2 z-[2] h-auto max-h-[72vh] w-auto max-w-[72vw] -translate-x-1/2 -translate-y-1/2 object-contain"
             style={{
